@@ -22,15 +22,17 @@ class WebSocketService {
   public connect(onConnected?: () => void) {
     if (this.client && this.isConnected) return;
 
-    this.client = new Client({
-      webSocketFactory: () => new SockJS(WS_URL),
-      reconnectDelay: 3000,
-      heartbeatIncoming: 4000,
-      heartbeatOutgoing: 4000,
-      debug: (msg) => {
-        // console.debug('[STOMP]', msg);
-      },
-    });
+    try {
+      this.client = new Client({
+        webSocketFactory: () => {
+          const SockJSClass = (SockJS as any).default || SockJS;
+          return new SockJSClass(WS_URL);
+        },
+        reconnectDelay: 3000,
+        heartbeatIncoming: 4000,
+        heartbeatOutgoing: 4000,
+        debug: () => {},
+      });
 
     this.client.onConnect = () => {
       this.isConnected = true;
@@ -62,6 +64,9 @@ class WebSocketService {
     };
 
     this.client.activate();
+    } catch (err) {
+      console.warn('Failed to initialize WebSocket client:', err);
+    }
   }
 
   public subscribe(topic: string, callback: EventCallback): () => void {
