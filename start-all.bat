@@ -27,9 +27,10 @@ start "Delivery Optimizer Frontend" "%~dp0start-frontend.bat"
 echo.
 echo =========================================================================
 echo Both services are launching in separate windows!
-echo - Frontend Dashboard: http://localhost:5173
+echo - Frontend Portal:    http://localhost:5173
 echo - Backend Swagger UI: http://localhost:8080/swagger-ui.html
-echo - Default Login:      admin@delivery.com / admin123
+echo - Customer Login:     customer@delivery.com / customer123
+echo - Admin Login:        admin@delivery.com / admin123
 echo =========================================================================
 echo.
 ping -n 6 127.0.0.1 >nul
