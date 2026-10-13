@@ -53,7 +53,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const demoLogin = async () => {
-    await login('admin@delivery.com', 'admin123');
+    try {
+      await login('pujariabhiram06@gmail.com', 'admin123');
+    } catch {
+      await login('admin@delivery.com', 'admin123');
+    }
   };
 
   const demoCustomerLogin = async () => {
