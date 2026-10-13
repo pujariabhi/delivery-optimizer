@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { authApi } from '../services/api';
@@ -8,28 +8,64 @@ type CustomerMode = 'otp' | 'password';
 type OtpStep = 'email' | 'code';
 
 const ADMIN_EMAIL = 'pujariabhiram06@gmail.com';
+const SAVED_ACCOUNTS_KEY = 'delivery_saved_gmails';
+const MAX_SAVED = 5;
 
+// ── Saved accounts helpers ──────────────────────────────────────────────────
+const getSavedAccounts = (): string[] => {
+  try {
+    return JSON.parse(localStorage.getItem(SAVED_ACCOUNTS_KEY) ?? '[]');
+  } catch {
+    return [];
+  }
+};
+
+const saveAccount = (email: string) => {
+  const list = getSavedAccounts().filter(e => e !== email);
+  list.unshift(email); // most recent first
+  localStorage.setItem(SAVED_ACCOUNTS_KEY, JSON.stringify(list.slice(0, MAX_SAVED)));
+};
+
+const removeAccount = (email: string) => {
+  const list = getSavedAccounts().filter(e => e !== email);
+  localStorage.setItem(SAVED_ACCOUNTS_KEY, JSON.stringify(list));
+};
+
+// ── Avatar helper ───────────────────────────────────────────────────────────
+const getInitials = (email: string) =>
+  email.charAt(0).toUpperCase();
+
+const colorFor = (email: string) => {
+  const colors = [
+    'bg-blue-500', 'bg-purple-500', 'bg-green-500',
+    'bg-pink-500', 'bg-indigo-500', 'bg-orange-500',
+  ];
+  let h = 0;
+  for (const c of email) h = (h * 31 + c.charCodeAt(0)) & 0xffff;
+  return colors[h % colors.length];
+};
+
+// ───────────────────────────────────────────────────────────────────────────
 const LoginPage: React.FC = () => {
   const { login, register, otpLogin, demoCustomerLogin } = useAuth();
   const navigate = useNavigate();
 
   const [tab, setTab] = useState<Tab>('customer');
+  const [savedAccounts, setSavedAccounts] = useState<string[]>(getSavedAccounts);
 
-  // ── Admin OTP state ───────────────────────────────────────────────────────
+  // ── Admin OTP ─────────────────────────────────────────────────────────────
   const [adminOtpStep, setAdminOtpStep] = useState<OtpStep>('email');
   const [adminOtpCode, setAdminOtpCode] = useState('');
   const [adminDemoOtp, setAdminDemoOtp] = useState('');
 
-  // ── Customer state ────────────────────────────────────────────────────────
+  // ── Customer OTP ──────────────────────────────────────────────────────────
   const [custMode, setCustMode] = useState<CustomerMode>('otp');
-
-  // Customer OTP
   const [custOtpEmail, setCustOtpEmail] = useState('');
   const [custOtpStep, setCustOtpStep] = useState<OtpStep>('email');
   const [custOtpCode, setCustOtpCode] = useState('');
   const [custDemoOtp, setCustDemoOtp] = useState('');
 
-  // Customer password (login or register)
+  // ── Customer password ─────────────────────────────────────────────────────
   const [pwMode, setPwMode] = useState<'login' | 'register'>('login');
   const [pwName, setPwName] = useState('');
   const [pwEmail, setPwEmail] = useState('');
@@ -41,118 +77,105 @@ const LoginPage: React.FC = () => {
 
   const clearMsg = () => { setError(''); setInfo(''); };
 
-  // ── Admin OTP handlers ────────────────────────────────────────────────────
+  // refresh saved list from storage whenever tab becomes customer
+  useEffect(() => {
+    setSavedAccounts(getSavedAccounts());
+  }, [tab]);
+
+  // ── Admin OTP ─────────────────────────────────────────────────────────────
   const handleAdminSendOtp = async () => {
-    clearMsg();
-    setLoading(true);
+    clearMsg(); setLoading(true);
     try {
       const res = await authApi.sendOtp(ADMIN_EMAIL);
       setAdminDemoOtp(res.demoOtp ?? '');
       setAdminOtpStep('code');
-      setInfo(`OTP sent to ${ADMIN_EMAIL}. Demo code: ${res.demoOtp}`);
-    } catch {
-      setError('Failed to send OTP. Please try again.');
-    } finally {
-      setLoading(false);
-    }
+      setInfo(`OTP sent! Demo code: ${res.demoOtp}`);
+    } catch { setError('Failed to send OTP. Try again.'); }
+    finally { setLoading(false); }
   };
 
   const handleAdminVerifyOtp = async () => {
     if (!adminOtpCode.trim()) { setError('Enter the 6-digit OTP.'); return; }
-    clearMsg();
-    setLoading(true);
+    clearMsg(); setLoading(true);
     try {
       await otpLogin(ADMIN_EMAIL, adminOtpCode.trim());
       navigate('/');
-    } catch {
-      setError('Invalid or expired OTP. Request a new one.');
-    } finally {
-      setLoading(false);
-    }
+    } catch { setError('Invalid or expired OTP.'); }
+    finally { setLoading(false); }
   };
 
   const resetAdminOtp = () => {
-    setAdminOtpStep('email');
-    setAdminOtpCode('');
-    setAdminDemoOtp('');
-    clearMsg();
+    setAdminOtpStep('email'); setAdminOtpCode(''); setAdminDemoOtp(''); clearMsg();
   };
 
-  // ── Customer OTP handlers ─────────────────────────────────────────────────
-  const handleCustSendOtp = async () => {
-    if (!custOtpEmail.trim()) { setError('Enter your Gmail address.'); return; }
-    clearMsg();
-    setLoading(true);
+  // ── Customer OTP ──────────────────────────────────────────────────────────
+  const handleCustSendOtp = async (emailOverride?: string) => {
+    const email = (emailOverride ?? custOtpEmail).trim().toLowerCase();
+    if (!email) { setError('Enter your Gmail address.'); return; }
+    if (emailOverride) setCustOtpEmail(emailOverride);
+    clearMsg(); setLoading(true);
     try {
-      const res = await authApi.sendOtp(custOtpEmail.trim().toLowerCase());
+      const res = await authApi.sendOtp(email);
       setCustDemoOtp(res.demoOtp ?? '');
       setCustOtpStep('code');
-      setInfo(`OTP sent! Demo code: ${res.demoOtp}`);
-    } catch {
-      setError('Failed to send OTP. Check the email and try again.');
-    } finally {
-      setLoading(false);
-    }
+      setInfo(`OTP sent to ${email}! Demo code: ${res.demoOtp}`);
+    } catch { setError('Failed to send OTP. Check the email and try again.'); }
+    finally { setLoading(false); }
   };
 
   const handleCustVerifyOtp = async () => {
     if (!custOtpCode.trim()) { setError('Enter the 6-digit OTP.'); return; }
-    clearMsg();
-    setLoading(true);
+    clearMsg(); setLoading(true);
     try {
       await otpLogin(custOtpEmail.trim().toLowerCase(), custOtpCode.trim());
+      saveAccount(custOtpEmail.trim().toLowerCase());
+      setSavedAccounts(getSavedAccounts());
       navigate('/customer');
-    } catch {
-      setError('Invalid or expired OTP. Request a new one.');
-    } finally {
-      setLoading(false);
-    }
+    } catch { setError('Invalid or expired OTP. Request a new one.'); }
+    finally { setLoading(false); }
   };
 
   const resetCustOtp = () => {
-    setCustOtpStep('email');
-    setCustOtpCode('');
-    setCustDemoOtp('');
-    clearMsg();
+    setCustOtpStep('email'); setCustOtpCode(''); setCustDemoOtp(''); clearMsg();
   };
 
-  // ── Customer password handler ─────────────────────────────────────────────
+  const handleRemoveSaved = (e: React.MouseEvent, email: string) => {
+    e.stopPropagation();
+    removeAccount(email);
+    setSavedAccounts(getSavedAccounts());
+  };
+
+  // ── Customer password ─────────────────────────────────────────────────────
   const handleCustPassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    clearMsg();
-    setLoading(true);
+    e.preventDefault(); clearMsg(); setLoading(true);
     try {
       if (pwMode === 'login') {
         await login(pwEmail, pwPass);
       } else {
         await register(pwName, pwEmail, pwPass);
       }
+      saveAccount(pwEmail.trim().toLowerCase());
+      setSavedAccounts(getSavedAccounts());
       navigate('/customer');
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { message?: string } } })?.response?.data?.message ??
         'Login failed. Check your email and password.';
       setError(msg);
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
-  // ── Demo customer ─────────────────────────────────────────────────────────
   const handleDemoCustomer = async () => {
-    clearMsg();
-    setLoading(true);
+    clearMsg(); setLoading(true);
     try { await demoCustomerLogin(); navigate('/customer'); }
     catch { setError('Demo login failed.'); }
     finally { setLoading(false); }
   };
 
-  // ── UI helpers ────────────────────────────────────────────────────────────
+  // ── CSS helpers ───────────────────────────────────────────────────────────
   const tabCls = (t: Tab) =>
     `flex-1 py-2.5 text-sm font-semibold rounded-lg transition-all ${
-      tab === t
-        ? 'bg-blue-600 text-white shadow'
-        : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+      tab === t ? 'bg-blue-600 text-white shadow' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
     }`;
 
   const modePillCls = (active: boolean) =>
@@ -162,8 +185,8 @@ const LoginPage: React.FC = () => {
 
   const OtpDemoBox = ({ code, onFill }: { code: string; onFill: () => void }) => (
     <div
-      className="p-3 bg-yellow-50 border border-yellow-300 rounded-lg text-sm cursor-pointer"
       onClick={onFill}
+      className="p-3 bg-yellow-50 border border-yellow-300 rounded-lg text-sm cursor-pointer select-none"
       title="Click to auto-fill OTP"
     >
       <span className="text-yellow-700 font-medium">Demo OTP (click to fill): </span>
@@ -171,6 +194,47 @@ const LoginPage: React.FC = () => {
     </div>
   );
 
+  // ── Saved account chips ───────────────────────────────────────────────────
+  const SavedAccountChips = () => {
+    if (savedAccounts.length === 0) return null;
+    return (
+      <div className="space-y-2">
+        <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">Your accounts</p>
+        <div className="space-y-2">
+          {savedAccounts.map(email => (
+            <div
+              key={email}
+              onClick={() => handleCustSendOtp(email)}
+              className="flex items-center gap-3 p-2.5 rounded-xl border border-gray-100 hover:border-blue-200 hover:bg-blue-50 cursor-pointer transition group"
+            >
+              <div className={`w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0 ${colorFor(email)}`}>
+                {getInitials(email)}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-gray-800 truncate">{email}</p>
+                <p className="text-xs text-gray-400">Click to send OTP</p>
+              </div>
+              <button
+                onClick={e => handleRemoveSaved(e, email)}
+                className="opacity-0 group-hover:opacity-100 w-6 h-6 flex items-center justify-center rounded-full hover:bg-red-100 text-gray-300 hover:text-red-500 transition text-xs"
+                title="Remove account"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+        <div className="relative py-1">
+          <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-100" /></div>
+          <div className="relative flex justify-center">
+            <span className="bg-white px-2 text-xs text-gray-400">or add another account</span>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
@@ -201,7 +265,7 @@ const LoginPage: React.FC = () => {
 
           <div className="p-6">
 
-            {/* Error / Info banners */}
+            {/* Banners */}
             {error && (
               <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm flex gap-2">
                 <span>❌</span><span>{error}</span>
@@ -213,15 +277,12 @@ const LoginPage: React.FC = () => {
               </div>
             )}
 
-            {/* ══════════════════ ADMIN TAB ══════════════════ */}
+            {/* ══ ADMIN TAB ══ */}
             {tab === 'admin' && (
               <div className="space-y-4">
                 <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-xs leading-relaxed">
                   🔒 Admin access is restricted to <strong>{ADMIN_EMAIL}</strong> only.
-                  A one-time OTP will be sent to verify your identity.
                 </div>
-
-                {/* Locked email display */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Admin email (locked)</label>
                   <div className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-600 font-mono select-all">
@@ -240,19 +301,14 @@ const LoginPage: React.FC = () => {
                 ) : (
                   <>
                     {adminDemoOtp && (
-                      <OtpDemoBox
-                        code={adminDemoOtp}
-                        onFill={() => setAdminOtpCode(adminDemoOtp)}
-                      />
+                      <OtpDemoBox code={adminDemoOtp} onFill={() => setAdminOtpCode(adminDemoOtp)} />
                     )}
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Enter 6-digit OTP sent to your Gmail
+                        Enter 6-digit OTP
                       </label>
                       <input
-                        type="text"
-                        inputMode="numeric"
-                        maxLength={6}
+                        type="text" inputMode="numeric" maxLength={6}
                         placeholder="_ _ _ _ _ _"
                         value={adminOtpCode}
                         onChange={e => setAdminOtpCode(e.target.value.replace(/\D/g, ''))}
@@ -267,10 +323,8 @@ const LoginPage: React.FC = () => {
                     >
                       {loading ? 'Verifying…' : 'Verify OTP & Enter Admin Panel'}
                     </button>
-                    <button
-                      onClick={resetAdminOtp}
-                      className="w-full py-1.5 text-sm text-gray-400 hover:text-gray-600 underline"
-                    >
+                    <button onClick={resetAdminOtp}
+                      className="w-full py-1.5 text-sm text-gray-400 hover:text-gray-600 underline">
                       ← Resend OTP
                     </button>
                   </>
@@ -278,38 +332,34 @@ const LoginPage: React.FC = () => {
               </div>
             )}
 
-            {/* ══════════════════ CUSTOMER TAB ══════════════════ */}
+            {/* ══ CUSTOMER TAB ══ */}
             {tab === 'customer' && (
               <div className="space-y-4">
 
                 {/* Sub-mode toggle */}
                 <div className="flex gap-1 bg-gray-50 p-1 rounded-xl">
-                  <button
-                    className={modePillCls(custMode === 'otp')}
-                    onClick={() => { setCustMode('otp'); clearMsg(); resetCustOtp(); }}
-                  >
+                  <button className={modePillCls(custMode === 'otp')}
+                    onClick={() => { setCustMode('otp'); clearMsg(); resetCustOtp(); }}>
                     📧 Gmail OTP
                   </button>
-                  <button
-                    className={modePillCls(custMode === 'password')}
-                    onClick={() => { setCustMode('password'); clearMsg(); }}
-                  >
+                  <button className={modePillCls(custMode === 'password')}
+                    onClick={() => { setCustMode('password'); clearMsg(); }}>
                     🔑 Email + Password
                   </button>
                 </div>
 
-                {/* ── OTP sub-mode ── */}
+                {/* ── OTP mode ── */}
                 {custMode === 'otp' && (
                   <div className="space-y-3">
-                    <p className="text-xs text-gray-500">
-                      First time? Enter your Gmail and we'll send a one-time code — no password needed.
-                      Returning? OTP works every time too.
-                    </p>
-
                     {custOtpStep === 'email' ? (
                       <>
+                        {/* Saved accounts chips */}
+                        <SavedAccountChips />
+
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Your Gmail</label>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Gmail address
+                          </label>
                           <input
                             type="email"
                             placeholder="you@gmail.com"
@@ -318,9 +368,12 @@ const LoginPage: React.FC = () => {
                             onKeyDown={e => e.key === 'Enter' && handleCustSendOtp()}
                             className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm"
                           />
+                          <p className="text-xs text-gray-400 mt-1">
+                            First time? We'll create your account automatically.
+                          </p>
                         </div>
                         <button
-                          onClick={handleCustSendOtp}
+                          onClick={() => handleCustSendOtp()}
                           disabled={loading}
                           className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition disabled:opacity-50"
                         >
@@ -330,19 +383,15 @@ const LoginPage: React.FC = () => {
                     ) : (
                       <>
                         {custDemoOtp && (
-                          <OtpDemoBox
-                            code={custDemoOtp}
-                            onFill={() => setCustOtpCode(custDemoOtp)}
-                          />
+                          <OtpDemoBox code={custDemoOtp} onFill={() => setCustOtpCode(custDemoOtp)} />
                         )}
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">
-                            OTP sent to <span className="text-blue-600 font-mono">{custOtpEmail}</span>
+                            OTP sent to{' '}
+                            <span className="text-blue-600 font-mono">{custOtpEmail}</span>
                           </label>
                           <input
-                            type="text"
-                            inputMode="numeric"
-                            maxLength={6}
+                            type="text" inputMode="numeric" maxLength={6}
                             placeholder="_ _ _ _ _ _"
                             value={custOtpCode}
                             onChange={e => setCustOtpCode(e.target.value.replace(/\D/g, ''))}
@@ -357,10 +406,8 @@ const LoginPage: React.FC = () => {
                         >
                           {loading ? 'Verifying…' : 'Verify & Sign In'}
                         </button>
-                        <button
-                          onClick={resetCustOtp}
-                          className="w-full py-1.5 text-sm text-gray-400 hover:text-gray-600 underline"
-                        >
+                        <button onClick={resetCustOtp}
+                          className="w-full py-1.5 text-sm text-gray-400 hover:text-gray-600 underline">
                           ← Use different email / Resend OTP
                         </button>
                       </>
@@ -368,88 +415,56 @@ const LoginPage: React.FC = () => {
                   </div>
                 )}
 
-                {/* ── Password sub-mode ── */}
+                {/* ── Password mode ── */}
                 {custMode === 'password' && (
                   <div className="space-y-3">
                     <p className="text-xs text-gray-500">
                       Returning customer? Sign in with your email and password.
-                      New here? Create an account below.
+                      New here? Create an account.
                     </p>
-
-                    {/* Login / Register toggle */}
                     <div className="flex gap-2 text-xs">
-                      <button
-                        className={`px-3 py-1 rounded-full border transition ${
-                          pwMode === 'login'
-                            ? 'border-blue-500 text-blue-600 bg-blue-50'
-                            : 'border-gray-200 text-gray-400 hover:border-gray-300'
-                        }`}
-                        onClick={() => { setPwMode('login'); clearMsg(); }}
-                      >
-                        Sign In
-                      </button>
-                      <button
-                        className={`px-3 py-1 rounded-full border transition ${
-                          pwMode === 'register'
-                            ? 'border-blue-500 text-blue-600 bg-blue-50'
-                            : 'border-gray-200 text-gray-400 hover:border-gray-300'
-                        }`}
-                        onClick={() => { setPwMode('register'); clearMsg(); }}
-                      >
-                        Create Account
-                      </button>
+                      {(['login', 'register'] as const).map(m => (
+                        <button key={m}
+                          className={`px-3 py-1 rounded-full border transition ${
+                            pwMode === m
+                              ? 'border-blue-500 text-blue-600 bg-blue-50'
+                              : 'border-gray-200 text-gray-400 hover:border-gray-300'
+                          }`}
+                          onClick={() => { setPwMode(m); clearMsg(); }}>
+                          {m === 'login' ? 'Sign In' : 'Create Account'}
+                        </button>
+                      ))}
                     </div>
-
                     <form onSubmit={handleCustPassword} className="space-y-3">
                       {pwMode === 'register' && (
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">Full name</label>
-                          <input
-                            type="text"
-                            placeholder="Your name"
-                            value={pwName}
-                            onChange={e => setPwName(e.target.value)}
-                            required
-                            className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm"
-                          />
+                          <input type="text" placeholder="Your name" value={pwName}
+                            onChange={e => setPwName(e.target.value)} required
+                            className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm" />
                         </div>
                       )}
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                        <input
-                          type="email"
-                          placeholder="you@gmail.com"
-                          value={pwEmail}
-                          onChange={e => setPwEmail(e.target.value)}
-                          required
-                          className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm"
-                        />
+                        <input type="email" placeholder="you@gmail.com" value={pwEmail}
+                          onChange={e => setPwEmail(e.target.value)} required
+                          className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm" />
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-                        <input
-                          type="password"
-                          placeholder="••••••••"
-                          value={pwPass}
-                          onChange={e => setPwPass(e.target.value)}
-                          required
-                          className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm"
-                        />
+                        <input type="password" placeholder="••••••••" value={pwPass}
+                          onChange={e => setPwPass(e.target.value)} required
+                          className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm" />
                       </div>
-                      <button
-                        type="submit"
-                        disabled={loading}
-                        className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition disabled:opacity-50"
-                      >
-                        {loading
-                          ? 'Please wait…'
-                          : pwMode === 'login' ? 'Sign In' : 'Create Account'}
+                      <button type="submit" disabled={loading}
+                        className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition disabled:opacity-50">
+                        {loading ? 'Please wait…' : pwMode === 'login' ? 'Sign In' : 'Create Account'}
                       </button>
                     </form>
                   </div>
                 )}
 
-                {/* Demo login divider */}
+                {/* Demo divider */}
                 <div className="relative pt-1">
                   <div className="absolute inset-0 flex items-center">
                     <div className="w-full border-t border-gray-100" />
@@ -458,17 +473,12 @@ const LoginPage: React.FC = () => {
                     <span className="bg-white px-2 text-xs text-gray-400">or</span>
                   </div>
                 </div>
-
-                <button
-                  onClick={handleDemoCustomer}
-                  disabled={loading}
-                  className="w-full py-2.5 border-2 border-blue-100 hover:border-blue-300 text-blue-600 font-semibold rounded-lg transition disabled:opacity-50 text-sm"
-                >
+                <button onClick={handleDemoCustomer} disabled={loading}
+                  className="w-full py-2.5 border-2 border-blue-100 hover:border-blue-300 text-blue-600 font-semibold rounded-lg transition disabled:opacity-50 text-sm">
                   🚀 Demo Customer Login (1-click)
                 </button>
               </div>
             )}
-
           </div>
         </div>
 
