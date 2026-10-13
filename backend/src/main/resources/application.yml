@@ -6,9 +6,9 @@ spring:
     name: delivery-optimizer-backend
 
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3306/delivery_optimizer?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC}
-    username: ${SPRING_DATASOURCE_USERNAME:${MYSQL_USERNAME:root}}
-    password: ${SPRING_DATASOURCE_PASSWORD:${MYSQL_PASSWORD:root}}
+    url: ${SPRING_DATASOURCE_URL:${MYSQL_URL:jdbc:mysql://${MYSQLHOST:localhost}:${MYSQLPORT:3306}/${MYSQLDATABASE:delivery_optimizer}?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC}}
+    username: ${SPRING_DATASOURCE_USERNAME:${MYSQLUSER:${MYSQL_USERNAME:root}}}
+    password: ${SPRING_DATASOURCE_PASSWORD:${MYSQLPASSWORD:${MYSQL_PASSWORD:root}}}
     driver-class-name: com.mysql.cj.jdbc.Driver
 
   jpa:

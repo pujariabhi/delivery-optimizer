@@ -1,20 +1,23 @@
-# Multi-stage Dockerfile for Spring Boot 3 Backend
-# Stage 1: Build
-FROM maven:3.9.6-eclipse-temurin-17 AS builder
+# Multi-stage Dockerfile for Railway / Cloud Deployment
+FROM maven:3.9.6-eclipse-temurin-17 AS build
 WORKDIR /app
+
+# Copy pom.xml and source code
 COPY pom.xml .
-RUN mvn dependency:go-offline -B
 COPY src ./src
+
+# Build production jar without running local tests
 RUN mvn clean package -DskipTests
 
-# Stage 2: Production Runtime
+# Runtime stage
 FROM eclipse-temurin:17-jre-jammy
 WORKDIR /app
-COPY --from=builder /app/target/delivery-optimizer-backend-1.0.0.jar app.jar
 
+# Copy artifact from build stage
+COPY --from=build /app/target/delivery-optimizer-backend-1.0.0.jar app.jar
+
+# Dynamic port binding
+ENV PORT=8080
 EXPOSE 8080
 
-ENV SPRING_PROFILES_ACTIVE=prod
-ENV JAVA_OPTS="-Xms256m -Xmx512m -XX:+UseG1GC"
-
-ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]
+ENTRYPOINT ["sh", "-c", "java -Djava.security.egd=file:/dev/./urandom -jar app.jar"]
