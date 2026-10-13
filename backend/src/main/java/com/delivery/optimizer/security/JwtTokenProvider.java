@@ -54,6 +54,20 @@ public class JwtTokenProvider {
                 .compact();
     }
 
+    /** Generate a JWT for OTP-based login where no Authentication object is available. */
+    public String generateTokenForEmail(String email, String role) {
+        Date now = new Date();
+        Date expiryDate = new Date(now.getTime() + expirationMs);
+
+        return Jwts.builder()
+                .subject(email)
+                .claim("role", role)
+                .issuedAt(now)
+                .expiration(expiryDate)
+                .signWith(key)
+                .compact();
+    }
+
     public String getUsernameFromJwt(String token) {
         Claims claims = Jwts.parser()
                 .verifyWith(key)

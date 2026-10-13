@@ -8,6 +8,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   login: (email: string, pass: string) => Promise<void>;
   register: (name: string, email: string, pass: string) => Promise<void>;
+  otpLogin: (email: string, otp: string) => Promise<void>;
   demoLogin: () => Promise<void>;
   demoCustomerLogin: () => Promise<void>;
   logout: () => void;
@@ -28,20 +29,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [token]);
 
+  const persist = (res: { token: string; id: number; name: string; email: string; role: string }) => {
+    const u = { id: res.id, name: res.name, email: res.email, role: res.role };
+    setToken(res.token);
+    setUser(u);
+    localStorage.setItem('delivery_token', res.token);
+    localStorage.setItem('delivery_user', JSON.stringify(u));
+  };
+
   const login = async (email: string, pass: string) => {
     const res = await authApi.login(email, pass);
-    setToken(res.token);
-    setUser({ id: res.id, name: res.name, email: res.email, role: res.role });
-    localStorage.setItem('delivery_token', res.token);
-    localStorage.setItem('delivery_user', JSON.stringify({ id: res.id, name: res.name, email: res.email, role: res.role }));
+    persist(res);
   };
 
   const register = async (name: string, email: string, pass: string) => {
     const res = await authApi.register(name, email, pass);
-    setToken(res.token);
-    setUser({ id: res.id, name: res.name, email: res.email, role: res.role });
-    localStorage.setItem('delivery_token', res.token);
-    localStorage.setItem('delivery_user', JSON.stringify({ id: res.id, name: res.name, email: res.email, role: res.role }));
+    persist(res);
+  };
+
+  const otpLogin = async (email: string, otp: string) => {
+    const res = await authApi.verifyOtp(email, otp);
+    persist(res);
   };
 
   const demoLogin = async () => {
@@ -66,7 +74,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         token,
         isAuthenticated: !!token || !!user,
         login,
+        register,
+        otpLogin,
         demoLogin,
+        demoCustomerLogin,
         logout,
       }}
     >

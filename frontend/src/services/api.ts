@@ -52,6 +52,14 @@ export const authApi = {
     const res = await api.post('/api/auth/register', { name, email, password });
     return res.data;
   },
+  sendOtp: async (email: string) => {
+    const res = await api.post('/api/auth/otp/send', { email });
+    return res.data as { message: string; demoOtp: string };
+  },
+  verifyOtp: async (email: string, otp: string) => {
+    const res = await api.post('/api/auth/otp/verify', { email, otp });
+    return res.data;
+  },
   getMe: async (): Promise<User> => {
     const res = await api.get('/api/auth/me');
     return res.data;

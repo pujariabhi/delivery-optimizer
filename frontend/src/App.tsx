@@ -9,7 +9,7 @@ import { RouteOptimizationPage } from './pages/RouteOptimizationPage';
 import { FleetManagementPage } from './pages/FleetManagementPage';
 import { AnalyticsPage } from './pages/AnalyticsPage';
 import { SettingsPage } from './pages/SettingsPage';
-import { LoginPage } from './pages/LoginPage';
+import LoginPage from './pages/LoginPage';
 import { CustomerPortalPage } from './pages/CustomerPortalPage';
 
 const AppRoutes: React.FC = () => {

@@ -1,273 +1,411 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Zap, Lock, Mail, User, ShieldCheck, AlertCircle, ShoppingBag, Truck, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { authApi } from '../services/api';
 
-export const LoginPage: React.FC = () => {
+type Tab = 'otp' | 'customer' | 'admin';
+type OtpStep = 'email' | 'code';
+
+const LoginPage: React.FC = () => {
+  const { login, register, otpLogin, demoLogin, demoCustomerLogin } = useAuth();
   const navigate = useNavigate();
-  const { login, register, demoLogin, demoCustomerLogin } = useAuth();
-  
-  // Selected login role mode: 'customer' or 'admin'
-  const [roleMode, setRoleMode] = useState<'customer' | 'admin'>('customer');
-  
-  // For customer: toggle between login and register
-  const [isRegistering, setIsRegistering] = useState<boolean>(false);
-  
-  // Form fields
-  const [name, setName] = useState<string>('');
-  const [email, setEmail] = useState<string>('customer@delivery.com');
-  const [password, setPassword] = useState<string>('customer123');
-  
-  const [error, setError] = useState<string>('');
-  const [successMsg, setSuccessMsg] = useState<string>('');
-  const [loading, setLoading] = useState<boolean>(false);
 
-  const handleRoleModeSwitch = (mode: 'customer' | 'admin') => {
-    setRoleMode(mode);
-    setIsRegistering(false);
-    setError('');
-    setSuccessMsg('');
-    if (mode === 'customer') {
-      setEmail('customer@delivery.com');
-      setPassword('customer123');
-    } else {
-      setEmail('admin@delivery.com');
-      setPassword('admin123');
+  const [tab, setTab] = useState<Tab>('otp');
+  const [otpStep, setOtpStep] = useState<OtpStep>('email');
+
+  // OTP state
+  const [otpEmail, setOtpEmail] = useState('');
+  const [otpCode, setOtpCode] = useState('');
+  const [demoOtp, setDemoOtp] = useState('');
+  const [otpSent, setOtpSent] = useState(false);
+
+  // Customer state
+  const [custMode, setCustMode] = useState<'login' | 'register'>('login');
+  const [custName, setCustName] = useState('');
+  const [custEmail, setCustEmail] = useState('');
+  const [custPass, setCustPass] = useState('');
+
+  // Admin state
+  const [adminEmail, setAdminEmail] = useState('');
+  const [adminPass, setAdminPass] = useState('');
+
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [info, setInfo] = useState('');
+
+  const clearMessages = () => { setError(''); setInfo(''); };
+
+  // ── OTP handlers ──────────────────────────────────────────────────────────
+  const handleSendOtp = async () => {
+    if (!otpEmail.trim()) { setError('Please enter your email address.'); return; }
+    clearMessages();
+    setLoading(true);
+    try {
+      const res = await authApi.sendOtp(otpEmail.trim().toLowerCase());
+      setDemoOtp(res.demoOtp ?? '');
+      setOtpSent(true);
+      setOtpStep('code');
+      setInfo(`OTP sent! (Demo code: ${res.demoOtp})`);
+    } catch {
+      setError('Failed to send OTP. Check the email and try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleVerifyOtp = async () => {
+    if (!otpCode.trim()) { setError('Please enter the 6-digit OTP.'); return; }
+    clearMessages();
+    setLoading(true);
+    try {
+      await otpLogin(otpEmail.trim().toLowerCase(), otpCode.trim());
+      navigate('/');
+    } catch {
+      setError('Invalid or expired OTP. Please request a new code.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resetOtp = () => {
+    setOtpStep('email');
+    setOtpCode('');
+    setDemoOtp('');
+    setOtpSent(false);
+    clearMessages();
+  };
+
+  // ── Customer password handlers ────────────────────────────────────────────
+  const handleCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
-    setSuccessMsg('');
+    clearMessages();
     setLoading(true);
     try {
-      if (roleMode === 'customer' && isRegistering) {
-        if (!name.trim()) {
-          setError('Please provide your full name.');
-          setLoading(false);
-          return;
-        }
-        await register(name, email, password);
-        navigate('/customer');
+      if (custMode === 'login') {
+        await login(custEmail, custPass);
       } else {
-        await login(email, password);
-        if (roleMode === 'customer') {
-          navigate('/customer');
-        } else {
-          navigate('/');
-        }
+        await register(custName, custEmail, custPass);
       }
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Authentication failed. Please verify your credentials.');
+      navigate('/customer');
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })
+        ?.response?.data?.message ?? 'Login failed. Check your credentials.';
+      setError(msg);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleQuickDemo = async () => {
-    setError('');
-    setSuccessMsg('');
+  // ── Admin password handler ────────────────────────────────────────────────
+  const handleAdmin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    clearMessages();
     setLoading(true);
     try {
-      if (roleMode === 'customer') {
-        await demoCustomerLogin();
-        navigate('/customer');
-      } else {
-        await demoLogin();
-        navigate('/');
-      }
-    } catch (err: any) {
-      setError('Demo login failed. Please ensure the backend is running or try direct login.');
+      await login(adminEmail, adminPass);
+      navigate('/');
+    } catch {
+      setError('Invalid admin credentials.');
     } finally {
       setLoading(false);
     }
   };
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+  const handleDemoAdmin = async () => {
+    clearMessages();
+    setLoading(true);
+    try { await demoLogin(); navigate('/'); }
+    catch { setError('Demo login failed.'); }
+    finally { setLoading(false); }
+  };
+
+  const handleDemoCustomer = async () => {
+    clearMessages();
+    setLoading(true);
+    try { await demoCustomerLogin(); navigate('/customer'); }
+    catch { setError('Demo login failed.'); }
+    finally { setLoading(false); }
+  };
+
+  const tabCls = (t: Tab) =>
+    `flex-1 py-2.5 text-sm font-semibold rounded-lg transition-all ${
+      tab === t
+        ? 'bg-blue-600 text-white shadow'
+        : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+    }`;
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-950 p-4">
-      <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl space-y-6">
-        {/* Brand Header */}
-        <div className="text-center space-y-2">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-500 mx-auto flex items-center justify-center text-white shadow-lg shadow-blue-500/25">
-            <Zap className="w-7 h-7 fill-white" />
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 flex items-center justify-center p-4">
+      <div className="w-full max-w-md">
+
+        {/* Header */}
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-600 rounded-2xl mb-4 shadow-lg">
+            <svg className="w-9 h-9 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+            </svg>
           </div>
-          <h1 className="text-xl font-bold text-white tracking-wide">OPTIDELIVER LOGISTICS</h1>
-          <p className="text-xs text-slate-400">
-            Real-Time Traffic-Aware Last-Mile Delivery Platform
-          </p>
+          <h1 className="text-2xl font-bold text-gray-900">Real-Time Delivery Optimizer</h1>
+          <p className="text-gray-500 text-sm mt-1">AI-Powered Last-Mile Logistics</p>
         </div>
 
-        {/* Portal Role Selector Tabs */}
-        <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-950 rounded-2xl border border-slate-800">
-          <button
-            type="button"
-            onClick={() => handleRoleModeSwitch('customer')}
-            className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-semibold transition-all ${
-              roleMode === 'customer'
-                ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
-            }`}
-          >
-            <ShoppingBag className="w-4 h-4" />
-            <span>Customer Portal</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => handleRoleModeSwitch('admin')}
-            className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-semibold transition-all ${
-              roleMode === 'admin'
-                ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
-            }`}
-          >
-            <Truck className="w-4 h-4" />
-            <span>Admin & Dispatcher</span>
-          </button>
-        </div>
+        <div className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
 
-        {/* Portal Description Badge */}
-        <div className="p-3 rounded-xl bg-slate-800/50 border border-slate-700/60 text-xs text-slate-300">
-          {roleMode === 'customer' ? (
-            <p>
-              📦 <span className="font-semibold text-white">Customer Sign In:</span> Track your packages live, check estimated delivery times (ETA), and book new orders.
-            </p>
-          ) : (
-            <p>
-              🛡️ <span className="font-semibold text-white">Admin & Fleet Manager:</span> Access route optimization engine, vehicle dispatch, traffic simulators, and telemetry.
-            </p>
-          )}
-        </div>
-
-        {/* Error / Success Notifications */}
-        {error && (
-          <div className="p-3.5 rounded-xl bg-rose-950/80 border border-rose-800 text-xs text-rose-300 flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
-            <span>{error}</span>
+          {/* Tabs */}
+          <div className="flex gap-1 p-2 bg-gray-50 border-b border-gray-100">
+            <button className={tabCls('otp')} onClick={() => { setTab('otp'); clearMessages(); }}>
+              📧 Gmail OTP
+            </button>
+            <button className={tabCls('customer')} onClick={() => { setTab('customer'); clearMessages(); }}>
+              🛒 Customer
+            </button>
+            <button className={tabCls('admin')} onClick={() => { setTab('admin'); clearMessages(); }}>
+              🔒 Admin
+            </button>
           </div>
-        )}
 
-        {successMsg && (
-          <div className="p-3.5 rounded-xl bg-emerald-950/80 border border-emerald-800 text-xs text-emerald-300 flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
-            <span>{successMsg}</span>
-          </div>
-        )}
+          <div className="p-6">
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="space-y-4 text-xs">
-          {roleMode === 'customer' && isRegistering && (
-            <div>
-              <label className="block text-slate-300 font-semibold mb-1">Full Name</label>
-              <div className="relative">
-                <User className="w-4 h-4 absolute left-3 top-3 text-slate-500" />
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full pl-9 pr-4 py-2.5 rounded-xl bg-slate-800/80 border border-slate-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="e.g. Ananya Deshmukh"
-                  required
-                />
+            {/* Error / Info banner */}
+            {error && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm flex items-start gap-2">
+                <span>❌</span> {error}
               </div>
-            </div>
-          )}
-
-          <div>
-            <label className="block text-slate-300 font-semibold mb-1">Email Address</label>
-            <div className="relative">
-              <Mail className="w-4 h-4 absolute left-3 top-3 text-slate-500" />
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full pl-9 pr-4 py-2.5 rounded-xl bg-slate-800/80 border border-slate-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder={roleMode === 'customer' ? 'customer@delivery.com' : 'admin@delivery.com'}
-                required
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-slate-300 font-semibold mb-1">Password</label>
-            <div className="relative">
-              <Lock className="w-4 h-4 absolute left-3 top-3 text-slate-500" />
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full pl-9 pr-4 py-2.5 rounded-xl bg-slate-800/80 border border-slate-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="••••••••"
-                required
-              />
-            </div>
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-2.5 rounded-xl bg-blue-600 text-white font-bold text-xs hover:bg-blue-700 transition shadow-lg shadow-blue-500/20 disabled:opacity-50"
-          >
-            {loading
-              ? 'Authenticating...'
-              : roleMode === 'customer' && isRegistering
-              ? 'Create Customer Account & Sign In'
-              : `Sign In as ${roleMode === 'customer' ? 'Customer' : 'Admin / Dispatcher'}`}
-          </button>
-        </form>
-
-        {/* Customer Register Toggle */}
-        {roleMode === 'customer' && (
-          <div className="text-center text-xs">
-            {isRegistering ? (
-              <p className="text-slate-400">
-                Already have a customer account?{' '}
-                <button
-                  type="button"
-                  onClick={() => setIsRegistering(false)}
-                  className="text-blue-400 hover:text-blue-300 font-semibold underline ml-1"
-                >
-                  Sign In
-                </button>
-              </p>
-            ) : (
-              <p className="text-slate-400">
-                New customer?{' '}
-                <button
-                  type="button"
-                  onClick={() => setIsRegistering(true)}
-                  className="text-blue-400 hover:text-blue-300 font-semibold underline ml-1"
-                >
-                  Create an account
-                </button>
-              </p>
             )}
+            {info && !error && (
+              <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm flex items-start gap-2">
+                <span>✅</span> {info}
+              </div>
+            )}
+
+            {/* ── OTP Tab ── */}
+            {tab === 'otp' && (
+              <div className="space-y-4">
+                <div>
+                  <h2 className="text-lg font-semibold text-gray-800">Sign in with Gmail OTP</h2>
+                  <p className="text-sm text-gray-500 mt-0.5">
+                    Works for <strong>any Gmail</strong>. Admin access is granted only to
+                    verified addresses.
+                  </p>
+                </div>
+
+                {otpStep === 'email' ? (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Email address</label>
+                      <input
+                        type="email"
+                        placeholder="you@gmail.com"
+                        value={otpEmail}
+                        onChange={e => setOtpEmail(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && handleSendOtp()}
+                        className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm"
+                      />
+                    </div>
+                    <button
+                      onClick={handleSendOtp}
+                      disabled={loading}
+                      className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition disabled:opacity-50"
+                    >
+                      {loading ? 'Sending…' : 'Send OTP →'}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    {demoOtp && (
+                      <div className="p-3 bg-yellow-50 border border-yellow-300 rounded-lg text-sm">
+                        <strong>Demo OTP:</strong>{' '}
+                        <span
+                          className="font-mono text-lg tracking-widest text-yellow-800 cursor-pointer select-all"
+                          onClick={() => setOtpCode(demoOtp)}
+                          title="Click to auto-fill"
+                        >
+                          {demoOtp}
+                        </span>
+                        <span className="text-yellow-600 ml-2 text-xs">(click to fill)</span>
+                      </div>
+                    )}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        6-digit OTP sent to <span className="text-blue-600">{otpEmail}</span>
+                      </label>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={6}
+                        placeholder="_ _ _ _ _ _"
+                        value={otpCode}
+                        onChange={e => setOtpCode(e.target.value.replace(/\D/g, ''))}
+                        onKeyDown={e => e.key === 'Enter' && handleVerifyOtp()}
+                        className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-mono tracking-widest text-center text-xl"
+                      />
+                    </div>
+                    <button
+                      onClick={handleVerifyOtp}
+                      disabled={loading}
+                      className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition disabled:opacity-50"
+                    >
+                      {loading ? 'Verifying…' : 'Verify & Sign In'}
+                    </button>
+                    <button
+                      onClick={resetOtp}
+                      className="w-full py-2 text-sm text-gray-500 hover:text-gray-700 underline"
+                    >
+                      ← Use a different email
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* ── Customer Tab ── */}
+            {tab === 'customer' && (
+              <div className="space-y-4">
+                <div className="flex gap-2">
+                  <button
+                    className={`flex-1 py-1.5 text-sm font-semibold rounded-lg transition ${
+                      custMode === 'login' ? 'bg-blue-100 text-blue-700' : 'text-gray-500 hover:bg-gray-50'
+                    }`}
+                    onClick={() => { setCustMode('login'); clearMessages(); }}
+                  >
+                    Sign In
+                  </button>
+                  <button
+                    className={`flex-1 py-1.5 text-sm font-semibold rounded-lg transition ${
+                      custMode === 'register' ? 'bg-blue-100 text-blue-700' : 'text-gray-500 hover:bg-gray-50'
+                    }`}
+                    onClick={() => { setCustMode('register'); clearMessages(); }}
+                  >
+                    Register
+                  </button>
+                </div>
+
+                <form onSubmit={handleCustomer} className="space-y-3">
+                  {custMode === 'register' && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Full name</label>
+                      <input
+                        type="text"
+                        placeholder="Your name"
+                        value={custName}
+                        onChange={e => setCustName(e.target.value)}
+                        required
+                        className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm"
+                      />
+                    </div>
+                  )}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                    <input
+                      type="email"
+                      placeholder="customer@example.com"
+                      value={custEmail}
+                      onChange={e => setCustEmail(e.target.value)}
+                      required
+                      className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                    <input
+                      type="password"
+                      placeholder="••••••••"
+                      value={custPass}
+                      onChange={e => setCustPass(e.target.value)}
+                      required
+                      className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition disabled:opacity-50"
+                  >
+                    {loading ? 'Please wait…' : custMode === 'login' ? 'Sign In' : 'Create Account'}
+                  </button>
+                </form>
+
+                <div className="relative my-2">
+                  <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-200" /></div>
+                  <div className="relative flex justify-center text-xs text-gray-400 bg-white px-2">or</div>
+                </div>
+
+                <button
+                  onClick={handleDemoCustomer}
+                  disabled={loading}
+                  className="w-full py-2.5 border-2 border-blue-200 hover:border-blue-400 text-blue-700 font-semibold rounded-lg transition disabled:opacity-50 text-sm"
+                >
+                  🚀 Demo Customer Login
+                </button>
+              </div>
+            )}
+
+            {/* ── Admin Tab ── */}
+            {tab === 'admin' && (
+              <div className="space-y-4">
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-xs">
+                  🔒 Admin access is restricted to verified personnel only.
+                </div>
+
+                <form onSubmit={handleAdmin} className="space-y-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Admin email</label>
+                    <input
+                      type="email"
+                      placeholder="admin@delivery.com"
+                      value={adminEmail}
+                      onChange={e => setAdminEmail(e.target.value)}
+                      required
+                      className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                    <input
+                      type="password"
+                      placeholder="••••••••"
+                      value={adminPass}
+                      onChange={e => setAdminPass(e.target.value)}
+                      required
+                      className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full py-2.5 bg-gray-800 hover:bg-gray-900 text-white font-semibold rounded-lg transition disabled:opacity-50"
+                  >
+                    {loading ? 'Signing in…' : 'Admin Sign In'}
+                  </button>
+                </form>
+
+                <div className="relative my-2">
+                  <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-200" /></div>
+                  <div className="relative flex justify-center text-xs text-gray-400 bg-white px-2">or</div>
+                </div>
+
+                <button
+                  onClick={handleDemoAdmin}
+                  disabled={loading}
+                  className="w-full py-2.5 border-2 border-gray-200 hover:border-gray-400 text-gray-700 font-semibold rounded-lg transition disabled:opacity-50 text-sm"
+                >
+                  🚀 Demo Admin Login
+                </button>
+              </div>
+            )}
+
           </div>
-        )}
-
-        {/* 1-Click Demo Access */}
-        <div className="relative border-t border-slate-800 pt-4">
-          <span className="absolute top-[-10px] left-1/2 -translate-x-1/2 bg-slate-900 px-3 text-[11px] text-slate-500 uppercase tracking-wider font-semibold">
-            Instant Demo Access
-          </span>
-          <button
-            onClick={handleQuickDemo}
-            disabled={loading}
-            className="w-full py-2.5 rounded-xl bg-emerald-600/20 border border-emerald-500/30 text-emerald-300 font-bold text-xs hover:bg-emerald-600/30 transition flex items-center justify-center gap-2"
-          >
-            <ShieldCheck className="w-4 h-4 text-emerald-400" />
-            {roleMode === 'customer'
-              ? '1-Click Demo Login (Customer: Ananya)'
-              : '1-Click Demo Login (Admin Dispatcher)'}
-          </button>
         </div>
 
-        {/* Demo Credentials Footer */}
-        <div className="text-center text-[11px] text-slate-500">
-          Demo: <span className="font-mono text-slate-400">{roleMode === 'customer' ? 'customer@delivery.com' : 'admin@delivery.com'}</span> /{' '}
-          <span className="font-mono text-slate-400">{roleMode === 'customer' ? 'customer123' : 'admin123'}</span>
-        </div>
+        {/* Footer */}
+        <p className="text-center text-xs text-gray-400 mt-6">
+          B.Tech Capstone — AI/ML Delivery Optimization System &copy; 2024
+        </p>
       </div>
     </div>
   );
 };
+
+export default LoginPage;
