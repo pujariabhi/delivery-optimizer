@@ -59,6 +59,25 @@ export const Sidebar: React.FC = () => {
             </NavLink>
           );
         })}
+
+        <div className="pt-2 border-t border-slate-800/80 mt-2">
+          <div className="px-3 pb-1 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
+            Client Portal
+          </div>
+          <NavLink
+            to="/customer"
+            className={({ isActive }) =>
+              `flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-xs font-medium transition-colors ${
+                isActive
+                  ? 'bg-blue-600 text-white shadow-sm font-semibold'
+                  : 'text-blue-400 hover:text-white hover:bg-slate-800/60'
+              }`
+            }
+          >
+            <Package className="w-4 h-4 shrink-0 text-blue-400" />
+            <span>Customer Portal</span>
+          </NavLink>
+        </div>
       </nav>
 
       {/* Project details card */}

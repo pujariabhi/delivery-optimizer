@@ -2,17 +2,21 @@ package com.delivery.optimizer.controller;
 
 import com.delivery.optimizer.dto.LoginRequest;
 import com.delivery.optimizer.dto.LoginResponse;
+import com.delivery.optimizer.dto.RegisterRequest;
+import com.delivery.optimizer.entity.Role;
 import com.delivery.optimizer.entity.User;
 import com.delivery.optimizer.repository.UserRepository;
 import com.delivery.optimizer.security.JwtTokenProvider;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
@@ -26,13 +30,48 @@ public class AuthController {
     private final AuthenticationManager authenticationManager;
     private final JwtTokenProvider tokenProvider;
     private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
 
     public AuthController(AuthenticationManager authenticationManager,
                           JwtTokenProvider tokenProvider,
-                          UserRepository userRepository) {
+                          UserRepository userRepository,
+                          PasswordEncoder passwordEncoder) {
         this.authenticationManager = authenticationManager;
         this.tokenProvider = tokenProvider;
         this.userRepository = userRepository;
+        this.passwordEncoder = passwordEncoder;
+    }
+
+    @PostMapping("/register")
+    @Operation(summary = "Register a new customer account")
+    public ResponseEntity<?> register(@Valid @RequestBody RegisterRequest request) {
+        if (userRepository.findByEmail(request.getEmail()).isPresent()) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(Map.of("message", "An account with email " + request.getEmail() + " already exists."));
+        }
+
+        User newUser = new User(
+                request.getName(),
+                request.getEmail(),
+                passwordEncoder.encode(request.getPassword()),
+                Role.ROLE_CUSTOMER
+        );
+        userRepository.save(newUser);
+
+        // Auto authenticate and generate token
+        Authentication authentication = authenticationManager.authenticate(
+                new UsernamePasswordAuthenticationToken(request.getEmail(), request.getPassword())
+        );
+        SecurityContextHolder.getContext().setAuthentication(authentication);
+        String token = tokenProvider.generateToken(authentication);
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(new LoginResponse(
+                token,
+                newUser.getId(),
+                newUser.getName(),
+                newUser.getEmail(),
+                newUser.getRole().name()
+        ));
     }
 
     @PostMapping("/login")

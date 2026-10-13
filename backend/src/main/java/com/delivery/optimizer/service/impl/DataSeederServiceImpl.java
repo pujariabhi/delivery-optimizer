@@ -90,7 +90,9 @@ public class DataSeederServiceImpl implements DataSeederService {
                 passwordEncoder.encode("admin123"), Role.ROLE_ADMIN);
         User dispatcher = new User("Operations Dispatcher", "dispatcher@delivery.com",
                 passwordEncoder.encode("admin123"), Role.ROLE_DISPATCHER);
-        userRepository.saveAll(Arrays.asList(admin, dispatcher));
+        User customer = new User("Ananya Deshmukh", "customer@delivery.com",
+                passwordEncoder.encode("customer123"), Role.ROLE_CUSTOMER);
+        userRepository.saveAll(Arrays.asList(admin, dispatcher, customer));
 
         // 2. Seed Fleet Vehicles
         Vehicle v1 = new Vehicle("KA-01-EA-1001", VehicleType.VAN, BigDecimal.valueOf(500.0),

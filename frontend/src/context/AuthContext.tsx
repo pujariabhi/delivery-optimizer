@@ -7,7 +7,9 @@ interface AuthContextType {
   token: string | null;
   isAuthenticated: boolean;
   login: (email: string, pass: string) => Promise<void>;
+  register: (name: string, email: string, pass: string) => Promise<void>;
   demoLogin: () => Promise<void>;
+  demoCustomerLogin: () => Promise<void>;
   logout: () => void;
 }
 
@@ -34,8 +36,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.setItem('delivery_user', JSON.stringify({ id: res.id, name: res.name, email: res.email, role: res.role }));
   };
 
+  const register = async (name: string, email: string, pass: string) => {
+    const res = await authApi.register(name, email, pass);
+    setToken(res.token);
+    setUser({ id: res.id, name: res.name, email: res.email, role: res.role });
+    localStorage.setItem('delivery_token', res.token);
+    localStorage.setItem('delivery_user', JSON.stringify({ id: res.id, name: res.name, email: res.email, role: res.role }));
+  };
+
   const demoLogin = async () => {
     await login('admin@delivery.com', 'admin123');
+  };
+
+  const demoCustomerLogin = async () => {
+    await login('customer@delivery.com', 'customer123');
   };
 
   const logout = () => {
